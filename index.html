@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -24,6 +25,15 @@ textarea,input,button{font-family:inherit}
 input::placeholder,textarea::placeholder{color:#4a6080}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-6px)}80%{transform:translateX(6px)}}
+@media(min-width:640px){
+  .prospect-card{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .app-inner{padding:0 24px;}
+  .filters-row{flex-wrap:wrap;}
+}
+@media(min-width:900px){
+  .prospect-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+  .school-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+}
 </style>
 </head>
 <body>
@@ -72,7 +82,7 @@ function StatusPill({status}){
 }
 
 function MeasurablesRow({p}){
-  const fields=[['HT',p.ht],['WT',p.wt],['40',p.spd],['HAND',p.hand],['ARM',p.arm],['WING',p.wing]];
+  const spd40=p.spd?(parseFloat(p.spd)||0).toFixed(2):'';const fields=[['HT',p.ht],['WT',p.wt],['40',spd40],['HAND',p.hand],['ARM',p.arm],['WING',p.wing]];
   if(!fields.some(([,v])=>v)) return null;
   return(
     <div style={{display:'flex',marginTop:6,paddingTop:6,borderTop:`1px solid ${C.line}`}}>
@@ -428,7 +438,7 @@ function App(){
   if(!unlocked) return <PinScreen onUnlock={unlock}/>;
 
   return(
-    <div style={{background:C.navyD,minHeight:'100vh',maxWidth:480,margin:'0 auto'}}>
+    <div style={{background:C.navyD,minHeight:'100vh',maxWidth:960,margin:'0 auto',padding:'0'}}>
       <div style={{background:C.navy,padding:'16px 20px 0',borderBottom:`1px solid ${C.line}`,position:'sticky',top:0,zIndex:10}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
           <div>
