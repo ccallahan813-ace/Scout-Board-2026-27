@@ -34,7 +34,7 @@ const { useState, useEffect, useRef } = React;
 const SUPA_URL = 'https://qvqfipckrxkbbhmkvfkf.supabase.co';
 const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2cWZpcGNrcnhrYmJobWt2ZmtmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMTE4NDgsImV4cCI6MjA5NTg4Nzg0OH0.FAsZtIoWABvcU0m6LdHQD5axUXSRnxOth8IXD1sCYMA';
 const sb = supabase.createClient(SUPA_URL, SUPA_KEY);
-const ANTH_KEY = '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';
+const ANTH_KEY = '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';
 const PIN = '131121';
 
 
@@ -184,6 +184,66 @@ function PinScreen({onUnlock}){
   );
 }
 
+// ── Intel Feed Component ─────────────────────────────────────────────────────
+function IntelFeed({prospect}){
+  const [status,setStatus]=useState('idle');
+  const [intel,setIntel]=useState('');
+  async function pullIntel(){
+    setStatus('loading');
+    setIntel('');
+    try{
+      const prompt = `You are an NFL character scout researching ${prospect.name}, a ${prospect.position} from ${prospect.school}.
+
+Pull and summarize the following from publicly available sources:
+
+1. BACKGROUND — hometown, family situation, upbringing, any notable background details
+2. CHARACTER REPUTATION — what coaches, teammates, and media have said about his character, work ethic, leadership
+3. ACADEMICS / ELIGIBILITY — any academic issues, eligibility concerns, year in school
+4. OFF-FIELD INCIDENTS — any arrests, suspensions, incidents, or red flags. Be factual and specific if anything exists. If clean, say so.
+5. INJURY HISTORY — any significant injuries or durability concerns
+6. PERSONALITY / INTANGIBLES — leadership reputation, locker room presence, interview demeanor if known
+
+Be concise and factual. Use short labeled sections. Only include what is publicly known — do not speculate.`;
+      const result = await callClaude(prompt);
+      setIntel(result);
+      setStatus('done');
+    } catch(e){
+      setIntel('Error: '+e.message);
+      setStatus('done');
+    }
+  }
+  return(
+    <div style={{padding:'4px 0'}}>
+      <button onClick={pullIntel} disabled={status==='loading'} style={{width:'100%',marginBottom:16,background:status==='loading'?C.navyL:`linear-gradient(135deg,${C.navy},${C.navyL})`,border:`1px solid ${C.blue}`,color:status==='loading'?C.silver:C.blue,borderRadius:12,padding:'14px 0',fontSize:14,fontWeight:700,cursor:status==='loading'?'default':'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+        {status==='loading'?'⏳ Pulling Intel…':'🔍 Pull Character Intel'}
+      </button>
+      {status==='idle'&&(
+        <div style={{textAlign:'center',padding:'30px 20px',color:C.silver}}>
+          <div style={{fontSize:32,marginBottom:10}}>🔍</div>
+          <div style={{fontSize:13,lineHeight:1.6,maxWidth:260,margin:'0 auto'}}>Pulls background, character reputation, off-field incidents, injury history, and eligibility from public sources.</div>
+        </div>
+      )}
+      {status==='loading'&&(
+        <div style={{textAlign:'center',padding:'30px 20px',color:C.silver}}>
+          <div style={{width:28,height:28,border:`3px solid ${C.line}`,borderTop:`3px solid ${C.blue}`,borderRadius:'50%',animation:'spin 0.8s linear infinite',margin:'0 auto 12px'}}/>
+          <div style={{fontSize:13}}>Researching {prospect.name}…</div>
+        </div>
+      )}
+      {status==='done'&&(
+        <div>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+            <div style={{color:C.blue,fontSize:11,fontWeight:700,letterSpacing:'0.08em'}}>CHARACTER INTEL</div>
+            <button onClick={pullIntel} style={{background:'none',border:`1px solid ${C.line}`,color:C.silverL,borderRadius:8,padding:'3px 10px',fontSize:11,cursor:'pointer'}}>Refresh</button>
+          </div>
+          <div style={{background:C.navyL,border:`1px solid ${C.line}`,borderRadius:12,padding:16}}>
+            <div style={{color:C.silverL,fontSize:13,lineHeight:1.8,whiteSpace:'pre-wrap'}}>{intel}</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Generate Report Component ────────────────────────────────────────────────
 function GenerateReport({prospect,onSave}){
   const [status,setStatus]=useState('idle');
@@ -280,7 +340,7 @@ function ProspectModal({prospect:init,onClose,onSave}){
   const [saved,setSaved]=useState(false);
   const saveTimer=useRef(null);
   const TABS=[
-    {icon:'🔍',label:'Intel',locked:true},
+    {icon:'🔍',label:'Intel',locked:false},
     {icon:'📋',label:'Char Notes',locked:false},
     {icon:'📄',label:'Char Report',locked:true},
     {icon:'🏈',label:'Eval Notes',locked:false},
@@ -343,7 +403,7 @@ function ProspectModal({prospect:init,onClose,onSave}){
 
       {/* Scrollable content */}
       <div style={{flex:1,overflowY:'auto',padding:20,maxWidth:800,width:'100%',margin:'0 auto',boxSizing:'border-box'}}>
-        {tab===0&&<LockedTab label="Intel Feed"/>}
+        {tab===0&&<IntelFeed prospect={p}/>}
         {tab===1&&(
           <div>
             {p.nfs_notes&&(
