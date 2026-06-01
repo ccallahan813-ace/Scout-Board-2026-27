@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="theme-color" content="#0C2340"/>
+<title>Scout Board 2026-27</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body,#root{height:100%;background:#080f1a}
+body{font-family:'Barlow','Helvetica Neue',sans-serif;color:#F0F4F8;-webkit-font-smoothing:antialiased}
+textarea,input,button{font-family:inherit}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#1e3a5f;border-radius:2px}
+input::placeholder,textarea::placeholder{color:#4a6080}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-6px)}80%{transform:translateX(6px)}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+const SUPA_URL = 'https://qvqfipckrxkbbhmkvfkf.supabase.co';
+const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2cWZpcGNrcnhrYmJobWt2ZmtmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMTE4NDgsImV4cCI6MjA5NTg4Nzg0OH0.FAsZtIoWABvcU0m6LdHQD5axUXSRnxOth8IXD1sCYMA';
+const sb = supabase.createClient(SUPA_URL, SUPA_KEY);
+const PIN = '2121';
+const PIN_TIMEOUT = 8 * 60 * 60 * 1000;
+
+const C = {
+  navy:'#0C2340',navyL:'#122b4d',navyD:'#080f1a',
+  blue:'#4B92DB',red:'#C8102E',silver:'#8A8D8F',
+  silverL:'#b8bbbe',white:'#F0F4F8',line:'#1e3a5f',
+};
+
+function gradeToColor(g){
+  if(!g) return C.silver;
+  const v=parseFloat(g);
+  if(v>=9.0) return '#4B92DB';
+  if(v>=8.0) return '#C8102E';
+  if(v>=6.5) return '#C9942A';
+  if(v>=5.9) return '#222222';
+  if(v>=5.5) return '#2E7D32';
+  if(v>=5.0) return '#6A1B9A';
+  return '#5D4037';
+}
+
+const STATUS_S={
+  'Not Started':{bg:'#0a1a2a',text:C.silver,border:'#1e3a5f'},
+  'Draft':{bg:'#0a1500',text:'#9ACD32',border:'#2a4000'},
+  'Submitted':{bg:'#00102a',text:C.blue,border:'#003060'},
+};
+const POSITIONS=['All','QB','RB','WR','TE','T','G','C','DT','NT','DE','EDGE','ILB','OLB','CB','S','K','P'];
+
+function ColorDot({grade,size=10}){
+  const col=gradeToColor(grade);
+  return <span style={{display:'inline-block',width:size,height:size,borderRadius:'50%',background:col,flexShrink:0,border:col==='#222222'?'1px solid #666':'none'}}/>;
+}
+
+function StatusPill({status}){
+  const s=STATUS_S[status]||STATUS_S['Not Started'];
+  return <span style={{background:s.bg,color:s.text,border:`1px solid ${s.border}`,fontSize:10,fontWeight:600,padding:'2px 8px',borderRadius:20,letterSpacing:'0.05em',whiteSpace:'nowrap'}}>{status}</span>;
+}
+
+function MeasurablesRow({p}){
+  const fields=[['HT',p.ht],['WT',p.wt],['40',p.spd],['HAND',p.hand],['ARM',p.arm],['WING',p.wing]];
+  if(!fields.some(([,v])=>v)) return null;
+  return(
+    <div style={{display:'flex',marginTop:6,paddingTop:6,borderTop:`1px solid ${C.line}`}}>
+      {fields.map(([label,val])=>(
+        <div key={label} style={{flex:1,textAlign:'center'}}>
+          <div style={{fontSize:9,color:C.silver,letterSpacing:'0.06em',marginBottom:2}}>{label}</div>
+          <div style={{fontSize:11,fontWeight:700,color:C.white}}>{val||'—'}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function NoteArea({value,onChange,placeholder,minHeight=160}){
+  return <textarea value={value||''} onChange={e=>onChange(e.target.value)} placeholder={placeholder}
+    style={{width:'100%',minHeight,background:C.navyL,border:`1px solid ${C.line}`,borderRadius:10,color:C.white,padding:14,fontSize:14,lineHeight:1.7,resize:'vertical',boxSizing:'border-box'}}/>;
+}
+
+function VoiceBtn(){
+  return <button style={{marginTop:10,width:'100%',background:C.blue,color:'#fff',border:'none',borderRadius:10,padding:'11px 0',fontSize:14,fontWeight:600,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>🎙 Voice Dictate</button>;
+}
+
+function LockedTab({label}){
+  return(
+    <div style={{textAlign:'center',padding:'48px 20px',color:C.silver}}>
+      <div style={{fontSize:36,marginBottom:12}}>🔒</div>
+      <div style={{fontSize:15,fontWeight:600,color:C.silverL,marginBottom:6}}>{label}</div>
+      <div style={{fontSize:13,lineHeight:1.6,maxWidth:240,margin:'0 auto'}}>Full build feature — requires Anthropic API key.</div>
+    </div>
+  );
+}
+
+function Spinner(){
+  return <div style={{display:'flex',justifyContent:'center',padding:40}}><div style={{width:28,height:28,border:`3px solid ${C.line}`,borderTop:`3px solid ${C.blue}`,borderRadius:'50%',animation:'spin 0.8s linear infinite'}}/></div>;
+}
+
+function PinScreen({onUnlock}){
+  const [entry,setEntry]=useState('');
+  const [shake,setShake]=useState(false);
+  const [error,setError]=useState(false);
+  function handleDigit(d){
+    if(entry.length>=4) return;
+    const next=entry+d;
+    setEntry(next);
+    if(next.length===4){
+      if(next===PIN){setTimeout(()=>onUnlock(),150);}
+      else{setShake(true);setError(true);setTimeout(()=>{setShake(false);setEntry('');setError(false)},800);}
+    }
+  }
+  const keys=[['1','2','3'],['4','5','6'],['7','8','9'],['','0','⌫']];
+  return(
+    <div style={{position:'fixed',inset:0,background:C.navyD,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',zIndex:999}}>
+      <div style={{marginBottom:48,textAlign:'center'}}>
+        <div style={{fontSize:11,color:C.blue,fontWeight:700,letterSpacing:'0.14em',textTransform:'uppercase',marginBottom:6}}>Tennessee Titans · 2026-27</div>
+        <div style={{fontSize:28,fontWeight:800,color:C.white,letterSpacing:'-0.02em'}}>Scout Board</div>
+      </div>
+      <div style={{display:'flex',gap:16,marginBottom:48,animation:shake?'shake 0.6s ease':'none'}}>
+        {[0,1,2,3].map(i=>(
+          <div key={i} style={{width:16,height:16,borderRadius:'50%',background:i<entry.length?(error?C.red:C.blue):'transparent',border:`2px solid ${i<entry.length?(error?C.red:C.blue):C.line}`,transition:'all 0.15s'}}/>
+        ))}
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,width:240}}>
+        {keys.flat().map((k,i)=>(
+          k===''?<div key={i}/>:
+          <button key={i} onClick={()=>k==='⌫'?setEntry(e=>e.slice(0,-1)):handleDigit(k)}
+            style={{background:k==='⌫'?'none':C.navyL,border:k==='⌫'?'none':`1px solid ${C.line}`,borderRadius:12,height:64,color:C.white,fontSize:k==='⌫'?20:22,fontWeight:600,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>
+            {k}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ProspectModal({prospect:init,onClose,onSave}){
+  const [p,setP]=useState({...init});
+  const [tab,setTab]=useState(1);
+  const [saving,setSaving]=useState(false);
+  const [saved,setSaved]=useState(false);
+  const saveTimer=useRef(null);
+  const TABS=[
+    {icon:'🔍',label:'Intel',locked:true},
+    {icon:'📋',label:'Char Notes',locked:false},
+    {icon:'📄',label:'Char Report',locked:true},
+    {icon:'🏈',label:'Eval Notes',locked:false},
+    {icon:'📊',label:'Eval Report',locked:true},
+    {icon:'☀️',label:'Summer',locked:false},
+  ];
+  const col=gradeToColor(p.grade);
+  async function autoSave(updated){
+    setP(updated);
+    clearTimeout(saveTimer.current);
+    saveTimer.current=setTimeout(async()=>{
+      setSaving(true);
+      await sb.from('prospects').update({char_notes:updated.char_notes,nfs_notes:updated.nfs_notes,eval_notes:updated.eval_notes,summer_eval:updated.summer_eval,status:updated.status,grade:updated.grade}).eq('id',updated.id);
+      setSaving(false);setSaved(true);setTimeout(()=>setSaved(false),2000);
+      onSave(updated);
+    },800);
+  }
+  return(
+    <div style={{position:'fixed',inset:0,zIndex:100,background:'rgba(0,0,0,0.88)',display:'flex',alignItems:'flex-end'}} onClick={onClose}>
+      <div style={{background:C.navyD,width:'100%',maxHeight:'93vh',borderRadius:'20px 20px 0 0',overflow:'hidden',display:'flex',flexDirection:'column',border:`1px solid ${C.line}`}} onClick={e=>e.stopPropagation()}>
+        <div style={{background:C.navy,padding:'16px 20px 0',borderBottom:`1px solid ${C.line}`}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>
+            <div style={{display:'flex',alignItems:'flex-start',gap:10}}>
+              <div style={{width:4,height:50,borderRadius:2,marginTop:2,flexShrink:0,background:col}}/>
+              <div>
+                <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}>
+                  <StatusPill status={p.status}/>
+                  {p.grade&&<span style={{color:col==='#222222'?'#aaa':col,fontSize:12,fontWeight:700}}>{p.grade}</span>}
+                  {saving&&<span style={{fontSize:10,color:C.silver}}>saving…</span>}
+                  {saved&&<span style={{fontSize:10,color:'#9ACD32'}}>✓ saved</span>}
+                </div>
+                <div style={{color:C.white,fontSize:22,fontWeight:800}}>{p.name}</div>
+                <div style={{color:C.silver,fontSize:12,marginTop:2}}>#{p.jersey} · {p.position} · {p.school}</div>
+              </div>
+            </div>
+            <button onClick={onClose} style={{background:'none',border:'none',color:C.silver,fontSize:22,cursor:'pointer'}}>✕</button>
+          </div>
+          <div style={{display:'flex',overflowX:'auto'}}>
+            {TABS.map((t,i)=>(
+              <button key={i} onClick={()=>setTab(i)} style={{background:'none',border:'none',borderBottom:tab===i?`2px solid ${C.blue}`:'2px solid transparent',color:tab===i?C.blue:C.silver,padding:'8px 12px',fontSize:11,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:4}}>
+                {t.icon} {t.label}{t.locked&&<span style={{fontSize:8,opacity:0.5}}>🔒</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div style={{flex:1,overflowY:'auto',padding:20}}>
+          {tab===0&&<LockedTab label="Intel Feed"/>}
+          {tab===1&&(
+            <div>
+              {p.nfs_notes&&(
+                <div style={{marginBottom:16}}>
+                  <div style={{color:C.blue,fontSize:11,fontWeight:700,letterSpacing:'0.08em',marginBottom:6}}>NFS NOTES</div>
+                  <div style={{background:C.navyL,border:`1px solid ${C.line}`,borderRadius:10,padding:14,color:C.silverL,fontSize:13,lineHeight:1.7,fontStyle:'italic'}}>{p.nfs_notes}</div>
+                </div>
+              )}
+              <div style={{color:C.silverL,fontSize:11,fontWeight:700,letterSpacing:'0.08em',marginBottom:6}}>CHARACTER NOTES</div>
+              <NoteArea value={p.char_notes} onChange={v=>autoSave({...p,char_notes:v})} placeholder="Character observations..."/>
+              <VoiceBtn/>
+              <button style={{marginTop:10,width:'100%',background:'none',border:`1px solid ${C.line}`,color:C.silverL,borderRadius:10,padding:'10px 0',fontSize:13,fontWeight:600,cursor:'pointer'}}>📎 Attach Questionnaire PDF</button>
+            </div>
+          )}
+          {tab===2&&<LockedTab label="Character Report Generator"/>}
+          {tab===3&&(
+            <div>
+              <div style={{color:C.silverL,fontSize:11,fontWeight:700,letterSpacing:'0.08em',marginBottom:6}}>EVAL NOTES</div>
+              <NoteArea value={p.eval_notes} onChange={v=>autoSave({...p,eval_notes:v})} placeholder="Football evaluation notes..."/>
+              <VoiceBtn/>
+            </div>
+          )}
+          {tab===4&&<LockedTab label="Eval Report Generator"/>}
+          {tab===5&&(
+            <div>
+              <button style={{width:'100%',marginBottom:16,background:`linear-gradient(135deg,${C.navy},${C.navyL})`,border:`1px solid ${C.blue}`,color:C.blue,borderRadius:12,padding:'14px 0',fontSize:14,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+                🔍 Pull 2025 Stats + Intel
+              </button>
+              <div style={{background:C.navyL,border:`1px solid ${C.line}`,borderRadius:12,padding:14,marginBottom:16}}>
+                <div style={{color:C.blue,fontSize:11,fontWeight:700,letterSpacing:'0.08em',marginBottom:6}}>2025 INTEL</div>
+                <div style={{color:C.silver,fontSize:13,lineHeight:1.6}}>Tap button above to pull stats and intel from The Athletic, ESPN, CBS, SI, NFL.com & PFF.</div>
+              </div>
+              <div style={{color:C.silverL,fontSize:11,fontWeight:700,letterSpacing:'0.08em',marginBottom:6}}>SUMMER EVAL</div>
+              <NoteArea value={p.summer_eval} onChange={v=>autoSave({...p,summer_eval:v})} placeholder={"Write your eval — include grade (e.g. 6.5) and raw thoughts..."} minHeight={180}/>
+              <VoiceBtn/>
+              <button style={{marginTop:10,width:'100%',background:`linear-gradient(135deg,${C.red},#8B0000)`,color:'#fff',border:'none',borderRadius:10,padding:'12px 0',fontSize:14,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+                ✨ Clean Up + Generate Report
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ImportModal({onClose,onImported}){
+  const [school,setSchool]=useState('');
+  const [preview,setPreview]=useState([]);
+  const [importing,setImporting]=useState(false);
+  const [done,setDone]=useState(false);
+  const fileRef=useRef();
+  function handleFile(e){
+    const file=e.target.files[0];
+    if(!file) return;
+    Papa.parse(file,{
+      header:true,skipEmptyLines:true,
+      complete:({data})=>{
+        const rows=data.map(r=>{
+          const last=r.LAST||r.last||r.Last||'';
+          const first=r.FIRST||r.first||r.First||'';
+          const name=r.name||r.Name||r.NAME||(last&&first?`${first} ${last}`:last||first)||'';
+          const pos=r.POS||r.pos||r.position||r.Position||r.FOOTBALL||'';
+          const jersey=r.JSY||r.jsy||r.jersey||r.Jersey||r['#']||'';
+          const ht=r.HT||'';const wt=r.WT||'';const spd=r.SPD||'';
+          const arm=r.ARM||'';const hand=r.HAND||'';const wing=r.WING||'';
+          const schoolVal=school||r.SCHOOL||r.school||r.School||'';
+          return {name,position:pos,jersey,school:schoolVal,ht,wt,spd,arm,hand,wing};
+        }).filter(r=>r.name);
+        setPreview(rows);
+      }
+    });
+  }
+  async function confirmImport(){
+    if(!preview.length) return;
+    setImporting(true);
+    const rows=preview.map(r=>({name:r.name,position:r.position,jersey:r.jersey,school:r.school,status:'Not Started',ht:r.ht||'',wt:r.wt||'',spd:r.spd||'',arm:r.arm||'',hand:r.hand||'',wing:r.wing||'',char_notes:'',nfs_notes:'',eval_notes:'',summer_eval:''}));
+    const {error}=await sb.from('prospects').upsert(rows,{onConflict:'name,school'});
+    setImporting(false);
+    if(!error){setDone(true);setTimeout(()=>{onImported();onClose();},1200);}
+    else{alert('Import error: '+error.message);}
+  }
+  return(
+    <div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.92)',display:'flex',alignItems:'flex-end'}} onClick={onClose}>
+      <div style={{background:C.navyD,width:'100%',maxHeight:'85vh',borderRadius:'20px 20px 0 0',overflow:'hidden',display:'flex',flexDirection:'column',border:`1px solid ${C.line}`}} onClick={e=>e.stopPropagation()}>
+        <div style={{background:C.navy,padding:'18px 20px',borderBottom:`1px solid ${C.line}`,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <div style={{color:C.white,fontWeight:800,fontSize:17}}>📂 Import Roster</div>
+          <button onClick={onClose} style={{background:'none',border:'none',color:C.silver,fontSize:22,cursor:'pointer'}}>✕</button>
+        </div>
+        <div style={{flex:1,overflowY:'auto',padding:20}}>
+          {done?(
+            <div style={{textAlign:'center',padding:'40px 0',color:'#9ACD32',fontSize:16,fontWeight:700}}>✓ Imported {preview.length} prospects</div>
+          ):(
+            <>
+              <div style={{marginBottom:14}}>
+                <div style={{color:C.silverL,fontSize:11,fontWeight:700,letterSpacing:'0.08em',marginBottom:6}}>SCHOOL NAME</div>
+                <input value={school} onChange={e=>setSchool(e.target.value)} placeholder="e.g. University of Tennessee"
+                  style={{width:'100%',background:C.navyL,border:`1px solid ${C.line}`,borderRadius:10,color:C.white,padding:'10px 14px',fontSize:14,boxSizing:'border-box'}}/>
+              </div>
+              <div style={{marginBottom:14}}>
+                <div style={{color:C.silverL,fontSize:11,fontWeight:700,letterSpacing:'0.08em',marginBottom:6}}>CSV / EXCEL FILE</div>
+                <div style={{color:C.silver,fontSize:12,marginBottom:8,lineHeight:1.5}}>Columns: LAST, FIRST, JSY, POS, SCHOOL, HT, WT, SPD, ARM, HAND, WING</div>
+                <button onClick={()=>fileRef.current.click()} style={{width:'100%',background:C.navyL,border:`1px dashed ${C.blue}`,color:C.blue,borderRadius:10,padding:'14px 0',fontSize:14,fontWeight:600,cursor:'pointer'}}>
+                  Tap to select file
+                </button>
+                <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" onChange={handleFile} style={{display:'none'}}/>
+              </div>
+              {preview.length>0&&(
+                <>
+                  <div style={{color:C.silverL,fontSize:11,fontWeight:700,letterSpacing:'0.08em',marginBottom:8}}>{preview.length} PROSPECTS FOUND</div>
+                  <div style={{maxHeight:200,overflowY:'auto',marginBottom:16}}>
+                    {preview.map((r,i)=>(
+                      <div key={i} style={{display:'flex',justifyContent:'space-between',padding:'7px 0',borderBottom:`1px solid ${C.line}`,fontSize:13}}>
+                        <span style={{color:C.white}}>{r.name}</span>
+                        <span style={{color:C.silver}}>{r.position} · #{r.jersey} · {r.school}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <button onClick={confirmImport} disabled={importing} style={{width:'100%',background:C.red,color:'#fff',border:'none',borderRadius:10,padding:'13px 0',fontSize:15,fontWeight:700,cursor:'pointer'}}>
+                    {importing?'Importing…':`Import ${preview.length} Prospects`}
+                  </button>
+                </>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SchoolModal({school,allProspects,onClose,onProspect}){
+  const prospects=allProspects.filter(p=>p.school===school.name).sort((a,b)=>parseFloat(b.grade||0)-parseFloat(a.grade||0));
+  return(
+    <div style={{position:'fixed',inset:0,zIndex:100,background:'rgba(0,0,0,0.88)',display:'flex',alignItems:'flex-end'}} onClick={onClose}>
+      <div style={{background:C.navyD,width:'100%',maxHeight:'93vh',borderRadius:'20px 20px 0 0',overflow:'hidden',display:'flex',flexDirection:'column',border:`1px solid ${C.line}`}} onClick={e=>e.stopPropagation()}>
+        <div style={{background:C.navy,padding:'20px 20px 16px',borderBottom:`1px solid ${C.line}`}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+            <div>
+              <div style={{color:school.visit_type==='Return Visit'?C.blue:'#9ACD32',fontSize:11,fontWeight:700,letterSpacing:'0.1em',textTransform:'uppercase',marginBottom:4}}>{school.visit_type||'First Visit'}</div>
+              <div style={{color:C.white,fontSize:22,fontWeight:800}}>🏫 {school.name}</div>
+            </div>
+            <button onClick={onClose} style={{background:'none',border:'none',color:C.silver,fontSize:22,cursor:'pointer'}}>✕</button>
+          </div>
+        </div>
+        <div style={{flex:1,overflowY:'auto',padding:20}}>
+          <div style={{background:C.navyL,border:`1px solid ${C.line}`,borderRadius:12,padding:14,marginBottom:20}}>
+            <div style={{color:C.blue,fontSize:11,fontWeight:700,letterSpacing:'0.08em',marginBottom:6}}>🔍 AI BRIEFING</div>
+            <div style={{color:C.silver,fontSize:13,lineHeight:1.6}}>Auto-generated briefing unlocks with API key.</div>
+          </div>
+          <div style={{color:C.silverL,fontSize:11,fontWeight:700,letterSpacing:'0.08em',marginBottom:10}}>PROSPECTS · {prospects.length}</div>
+          {prospects.map(p=>(
+            <div key={p.id} onClick={()=>{onClose();onProspect(p);}} style={{background:C.navyL,border:`1px solid ${C.line}`,borderLeft:`3px solid ${gradeToColor(p.grade)}`,borderRadius:10,padding:'12px 14px',marginBottom:10,cursor:'pointer'}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <div style={{display:'flex',alignItems:'center',gap:8}}>
+                  <ColorDot grade={p.grade} size={9}/>
+                  <div>
+                    <div style={{color:C.white,fontWeight:700}}>{p.name}</div>
+                    <div style={{color:C.silver,fontSize:12}}>#{p.jersey} · {p.position}</div>
+                  </div>
+                </div>
+                <StatusPill status={p.status}/>
+              </div>
+              <MeasurablesRow p={p}/>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function App(){
+  const [unlocked,setUnlocked]=useState(false);
+  const [tab,setTab]=useState('prospects');
+  const [prospects,setProspects]=useState([]);
+  const [schools,setSchools]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [search,setSearch]=useState('');
+  const [posFilter,setPosFilter]=useState('All');
+  const [statusFilter,setStatusFilter]=useState('All');
+  const [selectedProspect,setSelectedProspect]=useState(null);
+  const [selectedSchool,setSelectedSchool]=useState(null);
+  const [showImport,setShowImport]=useState(false);
+
+  useEffect(()=>{
+    const last=parseInt(localStorage.getItem('sb_auth_time')||'0');
+    if(Date.now()-last<PIN_TIMEOUT) setUnlocked(true);
+  },[]);
+
+  function unlock(){
+    localStorage.setItem('sb_auth_time',Date.now().toString());
+    setUnlocked(true);
+  }
+
+  async function load(){
+    setLoading(true);
+    const [{data:ps},{data:sc}]=await Promise.all([
+      sb.from('prospects').select('*').order('name'),
+      sb.from('schools').select('*').order('name'),
+    ]);
+    setProspects(ps||[]);
+    const schoolNames=[...new Set((ps||[]).map(p=>p.school).filter(Boolean))];
+    const schoolMap={};
+    (sc||[]).forEach(s=>{schoolMap[s.name]=s;});
+    setSchools(schoolNames.map(name=>schoolMap[name]||{name,visit_type:'First Visit'}));
+    setLoading(false);
+  }
+
+  useEffect(()=>{if(unlocked) load();},[unlocked]);
+
+  function updateProspect(updated){
+    setProspects(prev=>prev.map(p=>p.id===updated.id?updated:p));
+  }
+
+  const filtered=prospects.filter(p=>{
+    const q=search.toLowerCase();
+    const mS=!q||p.name?.toLowerCase().includes(q)||p.school?.toLowerCase().includes(q)||p.jersey?.includes(q);
+    const mP=posFilter==='All'||p.position===posFilter;
+    const mSt=statusFilter==='All'||p.status===statusFilter;
+    return mS&&mP&&mSt;
+  }).sort((a,b)=>parseFloat(b.grade||0)-parseFloat(a.grade||0));
+
+  if(!unlocked) return <PinScreen onUnlock={unlock}/>;
+
+  return(
+    <div style={{background:C.navyD,minHeight:'100vh',maxWidth:480,margin:'0 auto'}}>
+      <div style={{background:C.navy,padding:'16px 20px 0',borderBottom:`1px solid ${C.line}`,position:'sticky',top:0,zIndex:10}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+          <div>
+            <div style={{fontSize:10,color:C.blue,fontWeight:700,letterSpacing:'0.14em',textTransform:'uppercase'}}>Tennessee Titans · 2026-27</div>
+            <div style={{fontSize:24,fontWeight:800,letterSpacing:'-0.02em',color:C.white}}>Scout Board</div>
+          </div>
+          <button onClick={()=>setShowImport(true)} style={{background:C.navyL,border:`1px solid ${C.line}`,color:C.silverL,borderRadius:8,padding:'6px 10px',fontSize:18,cursor:'pointer'}}>📂</button>
+        </div>
+        <div style={{display:'flex'}}>
+          {[{id:'prospects',label:'👤 Prospects'},{id:'schools',label:'🏫 Schools'}].map(t=>(
+            <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,background:'none',border:'none',borderBottom:tab===t.id?`2px solid ${C.red}`:'2px solid transparent',color:tab===t.id?C.white:C.silver,padding:'8px 0 10px',fontSize:13,fontWeight:700,cursor:'pointer'}}>{t.label}</button>
+          ))}
+        </div>
+      </div>
+
+      {loading?<Spinner/>:(
+        <>
+          {tab==='prospects'&&(
+            <div style={{padding:'14px 16px'}}>
+              <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search name, school, jersey #..."
+                style={{width:'100%',background:C.navyL,border:`1px solid ${C.line}`,borderRadius:10,color:C.white,padding:'10px 14px',fontSize:14,marginBottom:10,boxSizing:'border-box'}}/>
+              <div style={{display:'flex',gap:6,marginBottom:10,overflowX:'auto',paddingBottom:2}}>
+                {['All','Not Started','Draft','Submitted'].map(s=>(
+                  <button key={s} onClick={()=>setStatusFilter(s)} style={{background:statusFilter===s?C.red:C.navyL,border:`1px solid ${statusFilter===s?C.red:C.line}`,color:statusFilter===s?'#fff':C.silver,borderRadius:20,padding:'4px 12px',fontSize:11,fontWeight:600,cursor:'pointer',whiteSpace:'nowrap'}}>{s}</button>
+                ))}
+              </div>
+              <div style={{display:'flex',gap:6,marginBottom:14,overflowX:'auto',paddingBottom:2}}>
+                {POSITIONS.map(pos=>(
+                  <button key={pos} onClick={()=>setPosFilter(pos)} style={{background:posFilter===pos?C.blue:C.navyL,border:`1px solid ${posFilter===pos?C.blue:C.line}`,color:posFilter===pos?'#fff':C.silver,borderRadius:20,padding:'4px 10px',fontSize:11,fontWeight:600,cursor:'pointer',whiteSpace:'nowrap'}}>{pos}</button>
+                ))}
+              </div>
+              <div style={{color:C.silver,fontSize:11,marginBottom:10,letterSpacing:'0.06em'}}>{filtered.length} PROSPECTS</div>
+              {filtered.length===0&&(
+                <div style={{textAlign:'center',padding:'40px 20px',color:C.silver}}>
+                  <div style={{fontSize:32,marginBottom:10}}>📋</div>
+                  <div style={{fontSize:14}}>No prospects yet — tap 📂 to import a roster</div>
+                </div>
+              )}
+              {filtered.map(p=>(
+                <div key={p.id} onClick={()=>setSelectedProspect(p)} style={{background:C.navyL,border:`1px solid ${C.line}`,borderLeft:`3px solid ${gradeToColor(p.grade)}`,borderRadius:10,padding:'12px 14px',marginBottom:10,cursor:'pointer'}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                      <ColorDot grade={p.grade} size={9}/>
+                      <div>
+                        <div style={{color:C.white,fontWeight:700,fontSize:15}}>{p.name}</div>
+                        <div style={{color:C.silver,fontSize:12}}>#{p.jersey} · {p.position} · {p.school}</div>
+                      </div>
+                    </div>
+                    <StatusPill status={p.status}/>
+                  </div>
+                  <MeasurablesRow p={p}/>
+                </div>
+              ))}
+            </div>
+          )}
+          {tab==='schools'&&(
+            <div style={{padding:'14px 16px'}}>
+              <div style={{color:C.silver,fontSize:11,marginBottom:10,letterSpacing:'0.06em'}}>{schools.length} SCHOOLS</div>
+              {schools.length===0&&(
+                <div style={{textAlign:'center',padding:'40px 20px',color:C.silver}}>
+                  <div style={{fontSize:32,marginBottom:10}}>🏫</div>
+                  <div style={{fontSize:14}}>No schools yet — import a roster to get started</div>
+                </div>
+              )}
+              {schools.map(s=>{
+                const sp=prospects.filter(p=>p.school===s.name).sort((a,b)=>parseFloat(b.grade||0)-parseFloat(a.grade||0));
+                return(
+                  <div key={s.name} onClick={()=>setSelectedSchool(s)} style={{background:C.navyL,border:`1px solid ${C.line}`,borderRadius:12,padding:'14px 16px',marginBottom:10,cursor:'pointer'}}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>
+                      <div>
+                        <div style={{color:C.white,fontWeight:700,fontSize:16}}>🏫 {s.name}</div>
+                        <div style={{color:C.silver,fontSize:12,marginTop:2}}>{sp.length} prospect{sp.length!==1?'s':''}</div>
+                      </div>
+                      <span style={{background:s.visit_type==='Return Visit'?'#001530':'#001a00',color:s.visit_type==='Return Visit'?C.blue:'#9ACD32',border:`1px solid ${s.visit_type==='Return Visit'?'#003060':'#1a4a00'}`,fontSize:10,fontWeight:700,padding:'3px 8px',borderRadius:20}}>{s.visit_type||'First Visit'}</span>
+                    </div>
+                    <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                      {sp.map(p=>(<div key={p.id} style={{display:'flex',alignItems:'center',gap:4}}><ColorDot grade={p.grade} size={8}/><span style={{fontSize:10,color:C.silver}}>{p.position}</span></div>))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+      {selectedProspect&&<ProspectModal prospect={selectedProspect} onClose={()=>setSelectedProspect(null)} onSave={updateProspect}/>}
+      {selectedSchool&&<SchoolModal school={selectedSchool} allProspects={prospects} onClose={()=>setSelectedSchool(null)} onProspect={p=>setSelectedProspect(p)}/>}
+      {showImport&&<ImportModal onClose={()=>setShowImport(false)} onImported={load}/>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
