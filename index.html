@@ -25,15 +25,6 @@ textarea,input,button{font-family:inherit}
 input::placeholder,textarea::placeholder{color:#4a6080}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-6px)}80%{transform:translateX(6px)}}
-@media(min-width:640px){
-  .prospect-card{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
-  .app-inner{padding:0 24px;}
-  .filters-row{flex-wrap:wrap;}
-}
-@media(min-width:900px){
-  .prospect-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
-  .school-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
-}
 </style>
 </head>
 <body>
@@ -43,8 +34,7 @@ const { useState, useEffect, useRef } = React;
 const SUPA_URL = 'https://qvqfipckrxkbbhmkvfkf.supabase.co';
 const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2cWZpcGNrcnhrYmJobWt2ZmtmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMTE4NDgsImV4cCI6MjA5NTg4Nzg0OH0.FAsZtIoWABvcU0m6LdHQD5axUXSRnxOth8IXD1sCYMA';
 const sb = supabase.createClient(SUPA_URL, SUPA_KEY);
-const PIN = '2121';
-const PIN_TIMEOUT = 8 * 60 * 60 * 1000;
+const PIN = '131121';
 
 const C = {
   navy:'#0C2340',navyL:'#122b4d',navyD:'#080f1a',
@@ -81,9 +71,11 @@ function StatusPill({status}){
   return <span style={{background:s.bg,color:s.text,border:`1px solid ${s.border}`,fontSize:10,fontWeight:600,padding:'2px 8px',borderRadius:20,letterSpacing:'0.05em',whiteSpace:'nowrap'}}>{status}</span>;
 }
 
-function MeasurablesRow({p}){
-  const spd40=p.spd?(parseFloat(p.spd)||0).toFixed(2):'';const fields=[['HT',p.ht],['WT',p.wt],['40',spd40],['HAND',p.hand],['ARM',p.arm],['WING',p.wing]];
-  if(!fields.some(([,v])=>v)) return null;
+function fmt40(v){ if(!v) return '—'; const n=parseFloat(v); return isNaN(n)?v:n.toFixed(2); }
+
+function MeasurablesBar({p}){
+  const fields=[['HT',p.ht],['WT',p.wt],['40',fmt40(p.spd)],['HAND',p.hand],['ARM',p.arm],['WING',p.wing]];
+  if(!fields.some(([,v])=>v&&v!=='—')) return null;
   return(
     <div style={{display:'flex',marginTop:6,paddingTop:6,borderTop:`1px solid ${C.line}`}}>
       {fields.map(([label,val])=>(
@@ -124,24 +116,36 @@ function PinScreen({onUnlock}){
   const [shake,setShake]=useState(false);
   const [error,setError]=useState(false);
   function handleDigit(d){
-    if(entry.length>=4) return;
+    if(entry.length>=6) return;
     const next=entry+d;
     setEntry(next);
-    if(next.length===4){
+    if(next.length===6){
       if(next===PIN){setTimeout(()=>onUnlock(),150);}
       else{setShake(true);setError(true);setTimeout(()=>{setShake(false);setEntry('');setError(false)},800);}
     }
   }
   const keys=[['1','2','3'],['4','5','6'],['7','8','9'],['','0','⌫']];
+  useEffect(()=>{
+    function handleKey(e){
+      if(e.key>='0'&&e.key<='9') handleDigit(e.key);
+      else if(e.key==='Backspace') setEntry(en=>en.slice(0,-1));
+      else if(e.key==='Enter'&&entry.length===6){
+        if(entry===PIN){onUnlock();}
+        else{setShake(true);setError(true);setTimeout(()=>{setShake(false);setEntry('');setError(false)},800);}
+      }
+    }
+    window.addEventListener('keydown',handleKey);
+    return ()=>window.removeEventListener('keydown',handleKey);
+  },[entry]);
   return(
     <div style={{position:'fixed',inset:0,background:C.navyD,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',zIndex:999}}>
       <div style={{marginBottom:48,textAlign:'center'}}>
-        <div style={{fontSize:11,color:C.blue,fontWeight:700,letterSpacing:'0.14em',textTransform:'uppercase',marginBottom:6}}>Tennessee Titans · 2026-27</div>
         <div style={{fontSize:28,fontWeight:800,color:C.white,letterSpacing:'-0.02em'}}>Scout Board</div>
+        <div style={{fontSize:12,color:C.silver,marginTop:4}}>2026-27</div>
       </div>
-      <div style={{display:'flex',gap:16,marginBottom:48,animation:shake?'shake 0.6s ease':'none'}}>
-        {[0,1,2,3].map(i=>(
-          <div key={i} style={{width:16,height:16,borderRadius:'50%',background:i<entry.length?(error?C.red:C.blue):'transparent',border:`2px solid ${i<entry.length?(error?C.red:C.blue):C.line}`,transition:'all 0.15s'}}/>
+      <div style={{display:'flex',gap:14,marginBottom:48,animation:shake?'shake 0.6s ease':'none'}}>
+        {[0,1,2,3,4,5].map(i=>(
+          <div key={i} style={{width:14,height:14,borderRadius:'50%',background:i<entry.length?(error?C.red:C.blue):'transparent',border:`2px solid ${i<entry.length?(error?C.red:C.blue):C.line}`,transition:'all 0.15s'}}/>
         ))}
       </div>
       <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,width:240}}>
@@ -157,6 +161,7 @@ function PinScreen({onUnlock}){
   );
 }
 
+// ── Full screen prospect modal ────────────────────────────────────────────────
 function ProspectModal({prospect:init,onClose,onSave}){
   const [p,setP]=useState({...init});
   const [tab,setTab]=useState(1);
@@ -183,81 +188,97 @@ function ProspectModal({prospect:init,onClose,onSave}){
     },800);
   }
   return(
-    <div style={{position:'fixed',inset:0,zIndex:100,background:'rgba(0,0,0,0.88)',display:'flex',alignItems:'flex-end'}} onClick={onClose}>
-      <div style={{background:C.navyD,width:'100%',maxHeight:'93vh',borderRadius:'20px 20px 0 0',overflow:'hidden',display:'flex',flexDirection:'column',border:`1px solid ${C.line}`}} onClick={e=>e.stopPropagation()}>
-        <div style={{background:C.navy,padding:'16px 20px 0',borderBottom:`1px solid ${C.line}`}}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>
-            <div style={{display:'flex',alignItems:'flex-start',gap:10}}>
-              <div style={{width:4,height:50,borderRadius:2,marginTop:2,flexShrink:0,background:col}}/>
-              <div>
-                <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}>
-                  <StatusPill status={p.status}/>
-                  {p.grade&&<span style={{color:col==='#222222'?'#aaa':col,fontSize:12,fontWeight:700}}>{p.grade}</span>}
-                  {saving&&<span style={{fontSize:10,color:C.silver}}>saving…</span>}
-                  {saved&&<span style={{fontSize:10,color:'#9ACD32'}}>✓ saved</span>}
-                </div>
-                <div style={{color:C.white,fontSize:22,fontWeight:800}}>{p.name}</div>
-                <div style={{color:C.silver,fontSize:12,marginTop:2}}>#{p.jersey} · {p.position} · {p.school}</div>
+    <div style={{position:'fixed',inset:0,zIndex:100,background:C.navyD,display:'flex',flexDirection:'column'}}>
+
+      {/* Full header with measurables */}
+      <div style={{background:C.navy,padding:'16px 20px 0',borderBottom:`1px solid ${C.line}`,flexShrink:0}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>
+          <div style={{display:'flex',alignItems:'flex-start',gap:10,flex:1}}>
+            <div style={{width:4,minHeight:50,borderRadius:2,marginTop:2,flexShrink:0,background:col}}/>
+            <div style={{flex:1}}>
+              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4,flexWrap:'wrap'}}>
+                <StatusPill status={p.status}/>
+                {p.grade&&<span style={{color:col==='#222222'?'#aaa':col,fontSize:13,fontWeight:700}}>{p.grade}</span>}
+                {saving&&<span style={{fontSize:10,color:C.silver}}>saving…</span>}
+                {saved&&<span style={{fontSize:10,color:'#9ACD32'}}>✓ saved</span>}
               </div>
-            </div>
-            <button onClick={onClose} style={{background:'none',border:'none',color:C.silver,fontSize:22,cursor:'pointer'}}>✕</button>
-          </div>
-          <div style={{display:'flex',overflowX:'auto'}}>
-            {TABS.map((t,i)=>(
-              <button key={i} onClick={()=>setTab(i)} style={{background:'none',border:'none',borderBottom:tab===i?`2px solid ${C.blue}`:'2px solid transparent',color:tab===i?C.blue:C.silver,padding:'8px 12px',fontSize:11,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:4}}>
-                {t.icon} {t.label}{t.locked&&<span style={{fontSize:8,opacity:0.5}}>🔒</span>}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div style={{flex:1,overflowY:'auto',padding:20}}>
-          {tab===0&&<LockedTab label="Intel Feed"/>}
-          {tab===1&&(
-            <div>
-              {p.nfs_notes&&(
-                <div style={{marginBottom:16}}>
-                  <div style={{color:C.blue,fontSize:11,fontWeight:700,letterSpacing:'0.08em',marginBottom:6}}>NFS NOTES</div>
-                  <div style={{background:C.navyL,border:`1px solid ${C.line}`,borderRadius:10,padding:14,color:C.silverL,fontSize:13,lineHeight:1.7,fontStyle:'italic'}}>{p.nfs_notes}</div>
+              <div style={{color:C.white,fontSize:22,fontWeight:800,letterSpacing:'-0.01em'}}>{p.name}</div>
+              <div style={{color:C.silver,fontSize:12,marginTop:2}}>#{p.jersey} · {p.position} · {p.school}</div>
+              {/* Measurables always visible at top */}
+              {(p.ht||p.wt||p.spd)&&(
+                <div style={{display:'flex',marginTop:10,paddingTop:10,borderTop:`1px solid ${C.line}`}}>
+                  {[['HT',p.ht],['WT',p.wt],['40',fmt40(p.spd)],['HAND',p.hand],['ARM',p.arm],['WING',p.wing]].map(([label,val])=>(
+                    <div key={label} style={{flex:1,textAlign:'center'}}>
+                      <div style={{fontSize:9,color:C.silver,letterSpacing:'0.06em',marginBottom:2}}>{label}</div>
+                      <div style={{fontSize:12,fontWeight:700,color:C.white}}>{val||'—'}</div>
+                    </div>
+                  ))}
                 </div>
               )}
-              <div style={{color:C.silverL,fontSize:11,fontWeight:700,letterSpacing:'0.08em',marginBottom:6}}>CHARACTER NOTES</div>
-              <NoteArea value={p.char_notes} onChange={v=>autoSave({...p,char_notes:v})} placeholder="Character observations..."/>
-              <VoiceBtn/>
-              <button style={{marginTop:10,width:'100%',background:'none',border:`1px solid ${C.line}`,color:C.silverL,borderRadius:10,padding:'10px 0',fontSize:13,fontWeight:600,cursor:'pointer'}}>📎 Attach Questionnaire PDF</button>
             </div>
-          )}
-          {tab===2&&<LockedTab label="Character Report Generator"/>}
-          {tab===3&&(
-            <div>
-              <div style={{color:C.silverL,fontSize:11,fontWeight:700,letterSpacing:'0.08em',marginBottom:6}}>EVAL NOTES</div>
-              <NoteArea value={p.eval_notes} onChange={v=>autoSave({...p,eval_notes:v})} placeholder="Football evaluation notes..."/>
-              <VoiceBtn/>
-            </div>
-          )}
-          {tab===4&&<LockedTab label="Eval Report Generator"/>}
-          {tab===5&&(
-            <div>
-              <button style={{width:'100%',marginBottom:16,background:`linear-gradient(135deg,${C.navy},${C.navyL})`,border:`1px solid ${C.blue}`,color:C.blue,borderRadius:12,padding:'14px 0',fontSize:14,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
-                🔍 Pull 2025 Stats + Intel
-              </button>
-              <div style={{background:C.navyL,border:`1px solid ${C.line}`,borderRadius:12,padding:14,marginBottom:16}}>
-                <div style={{color:C.blue,fontSize:11,fontWeight:700,letterSpacing:'0.08em',marginBottom:6}}>2025 INTEL</div>
-                <div style={{color:C.silver,fontSize:13,lineHeight:1.6}}>Tap button above to pull stats and intel from The Athletic, ESPN, CBS, SI, NFL.com & PFF.</div>
-              </div>
-              <div style={{color:C.silverL,fontSize:11,fontWeight:700,letterSpacing:'0.08em',marginBottom:6}}>SUMMER EVAL</div>
-              <NoteArea value={p.summer_eval} onChange={v=>autoSave({...p,summer_eval:v})} placeholder={"Write your eval — include grade (e.g. 6.5) and raw thoughts..."} minHeight={180}/>
-              <VoiceBtn/>
-              <button style={{marginTop:10,width:'100%',background:`linear-gradient(135deg,${C.red},#8B0000)`,color:'#fff',border:'none',borderRadius:10,padding:'12px 0',fontSize:14,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
-                ✨ Clean Up + Generate Report
-              </button>
-            </div>
-          )}
+          </div>
+          <button onClick={onClose} style={{background:'none',border:'none',color:C.silver,fontSize:22,cursor:'pointer',padding:'0 0 0 12px'}}>✕</button>
         </div>
+
+        {/* Tabs */}
+        <div style={{display:'flex',overflowX:'auto'}}>
+          {TABS.map((t,i)=>(
+            <button key={i} onClick={()=>setTab(i)} style={{background:'none',border:'none',borderBottom:tab===i?`2px solid ${C.blue}`:'2px solid transparent',color:tab===i?C.blue:C.silver,padding:'8px 12px',fontSize:11,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:4}}>
+              {t.icon} {t.label}{t.locked&&<span style={{fontSize:8,opacity:0.5}}>🔒</span>}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Scrollable content */}
+      <div style={{flex:1,overflowY:'auto',padding:20,maxWidth:800,width:'100%',margin:'0 auto',boxSizing:'border-box'}}>
+        {tab===0&&<LockedTab label="Intel Feed"/>}
+        {tab===1&&(
+          <div>
+            {p.nfs_notes&&(
+              <div style={{marginBottom:16}}>
+                <div style={{color:C.blue,fontSize:11,fontWeight:700,letterSpacing:'0.08em',marginBottom:6}}>NFS NOTES</div>
+                <div style={{background:C.navyL,border:`1px solid ${C.line}`,borderRadius:10,padding:14,color:C.silverL,fontSize:13,lineHeight:1.7,fontStyle:'italic'}}>{p.nfs_notes}</div>
+              </div>
+            )}
+            <div style={{color:C.silverL,fontSize:11,fontWeight:700,letterSpacing:'0.08em',marginBottom:6}}>CHARACTER NOTES</div>
+            <NoteArea value={p.char_notes} onChange={v=>autoSave({...p,char_notes:v})} placeholder="Character observations..."/>
+            <VoiceBtn/>
+            <button style={{marginTop:10,width:'100%',background:'none',border:`1px solid ${C.line}`,color:C.silverL,borderRadius:10,padding:'10px 0',fontSize:13,fontWeight:600,cursor:'pointer'}}>📎 Attach Questionnaire PDF</button>
+          </div>
+        )}
+        {tab===2&&<LockedTab label="Character Report Generator"/>}
+        {tab===3&&(
+          <div>
+            <div style={{color:C.silverL,fontSize:11,fontWeight:700,letterSpacing:'0.08em',marginBottom:6}}>EVAL NOTES</div>
+            <NoteArea value={p.eval_notes} onChange={v=>autoSave({...p,eval_notes:v})} placeholder="Football evaluation notes..."/>
+            <VoiceBtn/>
+          </div>
+        )}
+        {tab===4&&<LockedTab label="Eval Report Generator"/>}
+        {tab===5&&(
+          <div>
+            <button style={{width:'100%',marginBottom:16,background:`linear-gradient(135deg,${C.navy},${C.navyL})`,border:`1px solid ${C.blue}`,color:C.blue,borderRadius:12,padding:'14px 0',fontSize:14,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+              🔍 Pull 2025 Stats + Intel
+            </button>
+            <div style={{background:C.navyL,border:`1px solid ${C.line}`,borderRadius:12,padding:14,marginBottom:16}}>
+              <div style={{color:C.blue,fontSize:11,fontWeight:700,letterSpacing:'0.08em',marginBottom:6}}>2025 INTEL</div>
+              <div style={{color:C.silver,fontSize:13,lineHeight:1.6}}>Tap button above to pull stats and intel from The Athletic, ESPN, CBS, SI, NFL.com & PFF.</div>
+            </div>
+            <div style={{color:C.silverL,fontSize:11,fontWeight:700,letterSpacing:'0.08em',marginBottom:6}}>SUMMER EVAL</div>
+            <NoteArea value={p.summer_eval} onChange={v=>autoSave({...p,summer_eval:v})} placeholder={"Write your eval — include grade (e.g. 6.5) and raw thoughts..."} minHeight={180}/>
+            <VoiceBtn/>
+            <button style={{marginTop:10,width:'100%',background:`linear-gradient(135deg,${C.red},#8B0000)`,color:'#fff',border:'none',borderRadius:10,padding:'12px 0',fontSize:14,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+              ✨ Clean Up + Generate Report
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
+// ── Import Modal ──────────────────────────────────────────────────────────────
 function ImportModal({onClose,onImported}){
   const [school,setSchool]=useState('');
   const [preview,setPreview]=useState([]);
@@ -301,7 +322,7 @@ function ImportModal({onClose,onImported}){
           <div style={{color:C.white,fontWeight:800,fontSize:17}}>📂 Import Roster</div>
           <button onClick={onClose} style={{background:'none',border:'none',color:C.silver,fontSize:22,cursor:'pointer'}}>✕</button>
         </div>
-        <div style={{flex:1,overflowY:'auto',padding:20}}>
+        <div style={{flex:1,overflowY:'auto',padding:20,maxWidth:600,width:'100%',margin:'0 auto',boxSizing:'border-box'}}>
           {done?(
             <div style={{textAlign:'center',padding:'40px 0',color:'#9ACD32',fontSize:16,fontWeight:700}}>✓ Imported {preview.length} prospects</div>
           ):(
@@ -312,12 +333,12 @@ function ImportModal({onClose,onImported}){
                   style={{width:'100%',background:C.navyL,border:`1px solid ${C.line}`,borderRadius:10,color:C.white,padding:'10px 14px',fontSize:14,boxSizing:'border-box'}}/>
               </div>
               <div style={{marginBottom:14}}>
-                <div style={{color:C.silverL,fontSize:11,fontWeight:700,letterSpacing:'0.08em',marginBottom:6}}>CSV / EXCEL FILE</div>
+                <div style={{color:C.silverL,fontSize:11,fontWeight:700,letterSpacing:'0.08em',marginBottom:6}}>CSV FILE</div>
                 <div style={{color:C.silver,fontSize:12,marginBottom:8,lineHeight:1.5}}>Columns: LAST, FIRST, JSY, POS, SCHOOL, HT, WT, SPD, ARM, HAND, WING</div>
                 <button onClick={()=>fileRef.current.click()} style={{width:'100%',background:C.navyL,border:`1px dashed ${C.blue}`,color:C.blue,borderRadius:10,padding:'14px 0',fontSize:14,fontWeight:600,cursor:'pointer'}}>
-                  Tap to select file
+                  Select CSV file
                 </button>
-                <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" onChange={handleFile} style={{display:'none'}}/>
+                <input ref={fileRef} type="file" accept=".csv" onChange={handleFile} style={{display:'none'}}/>
               </div>
               {preview.length>0&&(
                 <>
@@ -343,28 +364,29 @@ function ImportModal({onClose,onImported}){
   );
 }
 
+// ── School Modal ──────────────────────────────────────────────────────────────
 function SchoolModal({school,allProspects,onClose,onProspect}){
   const prospects=allProspects.filter(p=>p.school===school.name).sort((a,b)=>parseFloat(b.grade||0)-parseFloat(a.grade||0));
   return(
-    <div style={{position:'fixed',inset:0,zIndex:100,background:'rgba(0,0,0,0.88)',display:'flex',alignItems:'flex-end'}} onClick={onClose}>
-      <div style={{background:C.navyD,width:'100%',maxHeight:'93vh',borderRadius:'20px 20px 0 0',overflow:'hidden',display:'flex',flexDirection:'column',border:`1px solid ${C.line}`}} onClick={e=>e.stopPropagation()}>
-        <div style={{background:C.navy,padding:'20px 20px 16px',borderBottom:`1px solid ${C.line}`}}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
-            <div>
-              <div style={{color:school.visit_type==='Return Visit'?C.blue:'#9ACD32',fontSize:11,fontWeight:700,letterSpacing:'0.1em',textTransform:'uppercase',marginBottom:4}}>{school.visit_type||'First Visit'}</div>
-              <div style={{color:C.white,fontSize:22,fontWeight:800}}>🏫 {school.name}</div>
-            </div>
-            <button onClick={onClose} style={{background:'none',border:'none',color:C.silver,fontSize:22,cursor:'pointer'}}>✕</button>
+    <div style={{position:'fixed',inset:0,zIndex:100,background:C.navyD,display:'flex',flexDirection:'column'}}>
+      <div style={{background:C.navy,padding:'20px 20px 16px',borderBottom:`1px solid ${C.line}`,flexShrink:0}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+          <div>
+            <div style={{color:school.visit_type==='Return Visit'?C.blue:'#9ACD32',fontSize:11,fontWeight:700,letterSpacing:'0.1em',textTransform:'uppercase',marginBottom:4}}>{school.visit_type||'First Visit'}</div>
+            <div style={{color:C.white,fontSize:22,fontWeight:800}}>🏫 {school.name}</div>
           </div>
+          <button onClick={onClose} style={{background:'none',border:'none',color:C.silver,fontSize:22,cursor:'pointer'}}>✕</button>
         </div>
-        <div style={{flex:1,overflowY:'auto',padding:20}}>
-          <div style={{background:C.navyL,border:`1px solid ${C.line}`,borderRadius:12,padding:14,marginBottom:20}}>
-            <div style={{color:C.blue,fontSize:11,fontWeight:700,letterSpacing:'0.08em',marginBottom:6}}>🔍 AI BRIEFING</div>
-            <div style={{color:C.silver,fontSize:13,lineHeight:1.6}}>Auto-generated briefing unlocks with API key.</div>
-          </div>
-          <div style={{color:C.silverL,fontSize:11,fontWeight:700,letterSpacing:'0.08em',marginBottom:10}}>PROSPECTS · {prospects.length}</div>
+      </div>
+      <div style={{flex:1,overflowY:'auto',padding:20,maxWidth:800,width:'100%',margin:'0 auto',boxSizing:'border-box'}}>
+        <div style={{background:C.navyL,border:`1px solid ${C.line}`,borderRadius:12,padding:14,marginBottom:20}}>
+          <div style={{color:C.blue,fontSize:11,fontWeight:700,letterSpacing:'0.08em',marginBottom:6}}>🔍 AI BRIEFING</div>
+          <div style={{color:C.silver,fontSize:13,lineHeight:1.6}}>Auto-generated briefing unlocks with API key.</div>
+        </div>
+        <div style={{color:C.silverL,fontSize:11,fontWeight:700,letterSpacing:'0.08em',marginBottom:10}}>PROSPECTS · {prospects.length}</div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:10}}>
           {prospects.map(p=>(
-            <div key={p.id} onClick={()=>{onClose();onProspect(p);}} style={{background:C.navyL,border:`1px solid ${C.line}`,borderLeft:`3px solid ${gradeToColor(p.grade)}`,borderRadius:10,padding:'12px 14px',marginBottom:10,cursor:'pointer'}}>
+            <div key={p.id} onClick={()=>{onClose();onProspect(p);}} style={{background:C.navyL,border:`1px solid ${C.line}`,borderLeft:`3px solid ${gradeToColor(p.grade)}`,borderRadius:10,padding:'12px 14px',cursor:'pointer'}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                 <div style={{display:'flex',alignItems:'center',gap:8}}>
                   <ColorDot grade={p.grade} size={9}/>
@@ -375,7 +397,7 @@ function SchoolModal({school,allProspects,onClose,onProspect}){
                 </div>
                 <StatusPill status={p.status}/>
               </div>
-              <MeasurablesRow p={p}/>
+              <MeasurablesBar p={p}/>
             </div>
           ))}
         </div>
@@ -384,6 +406,7 @@ function SchoolModal({school,allProspects,onClose,onProspect}){
   );
 }
 
+// ── Main App ──────────────────────────────────────────────────────────────────
 function App(){
   const [unlocked,setUnlocked]=useState(false);
   const [tab,setTab]=useState('prospects');
@@ -398,14 +421,12 @@ function App(){
   const [showImport,setShowImport]=useState(false);
 
   useEffect(()=>{
-    const last=parseInt(localStorage.getItem('sb_auth_time')||'0');
-    if(Date.now()-last<PIN_TIMEOUT) setUnlocked(true);
+    function handleVisibility(){ if(document.hidden) setUnlocked(false); }
+    document.addEventListener('visibilitychange',handleVisibility);
+    return ()=>document.removeEventListener('visibilitychange',handleVisibility);
   },[]);
 
-  function unlock(){
-    localStorage.setItem('sb_auth_time',Date.now().toString());
-    setUnlocked(true);
-  }
+  function unlock(){ setUnlocked(true); }
 
   async function load(){
     setLoading(true);
@@ -421,7 +442,7 @@ function App(){
     setLoading(false);
   }
 
-  useEffect(()=>{if(unlocked) load();},[unlocked]);
+  useEffect(()=>{ if(unlocked) load(); },[unlocked]);
 
   function updateProspect(updated){
     setProspects(prev=>prev.map(p=>p.id===updated.id?updated:p));
@@ -438,92 +459,102 @@ function App(){
   if(!unlocked) return <PinScreen onUnlock={unlock}/>;
 
   return(
-    <div style={{background:C.navyD,minHeight:'100vh',maxWidth:960,margin:'0 auto',padding:'0'}}>
+    <div style={{background:C.navyD,minHeight:'100vh'}}>
+      {/* Header */}
       <div style={{background:C.navy,padding:'16px 20px 0',borderBottom:`1px solid ${C.line}`,position:'sticky',top:0,zIndex:10}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
-          <div>
-            <div style={{fontSize:10,color:C.blue,fontWeight:700,letterSpacing:'0.14em',textTransform:'uppercase'}}>Tennessee Titans · 2026-27</div>
-            <div style={{fontSize:24,fontWeight:800,letterSpacing:'-0.02em',color:C.white}}>Scout Board</div>
+        <div style={{maxWidth:1200,margin:'0 auto'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+            <div>
+              <div style={{fontSize:10,color:C.blue,fontWeight:700,letterSpacing:'0.14em',textTransform:'uppercase'}}>2026-27</div>
+              <div style={{fontSize:24,fontWeight:800,letterSpacing:'-0.02em',color:C.white}}>Scout Board</div>
+            </div>
+            <button onClick={()=>setShowImport(true)} style={{background:C.navyL,border:`1px solid ${C.line}`,color:C.silverL,borderRadius:8,padding:'6px 10px',fontSize:18,cursor:'pointer'}}>📂</button>
           </div>
-          <button onClick={()=>setShowImport(true)} style={{background:C.navyL,border:`1px solid ${C.line}`,color:C.silverL,borderRadius:8,padding:'6px 10px',fontSize:18,cursor:'pointer'}}>📂</button>
-        </div>
-        <div style={{display:'flex'}}>
-          {[{id:'prospects',label:'👤 Prospects'},{id:'schools',label:'🏫 Schools'}].map(t=>(
-            <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,background:'none',border:'none',borderBottom:tab===t.id?`2px solid ${C.red}`:'2px solid transparent',color:tab===t.id?C.white:C.silver,padding:'8px 0 10px',fontSize:13,fontWeight:700,cursor:'pointer'}}>{t.label}</button>
-          ))}
+          <div style={{display:'flex'}}>
+            {[{id:'prospects',label:'👤 Prospects'},{id:'schools',label:'🏫 Schools'}].map(t=>(
+              <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:'0 0 auto',background:'none',border:'none',borderBottom:tab===t.id?`2px solid ${C.red}`:'2px solid transparent',color:tab===t.id?C.white:C.silver,padding:'8px 20px 10px',fontSize:13,fontWeight:700,cursor:'pointer'}}>{t.label}</button>
+            ))}
+          </div>
         </div>
       </div>
 
-      {loading?<Spinner/>:(
-        <>
-          {tab==='prospects'&&(
-            <div style={{padding:'14px 16px'}}>
-              <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search name, school, jersey #..."
-                style={{width:'100%',background:C.navyL,border:`1px solid ${C.line}`,borderRadius:10,color:C.white,padding:'10px 14px',fontSize:14,marginBottom:10,boxSizing:'border-box'}}/>
-              <div style={{display:'flex',gap:6,marginBottom:10,overflowX:'auto',paddingBottom:2}}>
-                {['All','Not Started','Draft','Submitted'].map(s=>(
-                  <button key={s} onClick={()=>setStatusFilter(s)} style={{background:statusFilter===s?C.red:C.navyL,border:`1px solid ${statusFilter===s?C.red:C.line}`,color:statusFilter===s?'#fff':C.silver,borderRadius:20,padding:'4px 12px',fontSize:11,fontWeight:600,cursor:'pointer',whiteSpace:'nowrap'}}>{s}</button>
-                ))}
-              </div>
-              <div style={{display:'flex',gap:6,marginBottom:14,overflowX:'auto',paddingBottom:2}}>
-                {POSITIONS.map(pos=>(
-                  <button key={pos} onClick={()=>setPosFilter(pos)} style={{background:posFilter===pos?C.blue:C.navyL,border:`1px solid ${posFilter===pos?C.blue:C.line}`,color:posFilter===pos?'#fff':C.silver,borderRadius:20,padding:'4px 10px',fontSize:11,fontWeight:600,cursor:'pointer',whiteSpace:'nowrap'}}>{pos}</button>
-                ))}
-              </div>
-              <div style={{color:C.silver,fontSize:11,marginBottom:10,letterSpacing:'0.06em'}}>{filtered.length} PROSPECTS</div>
-              {filtered.length===0&&(
-                <div style={{textAlign:'center',padding:'40px 20px',color:C.silver}}>
-                  <div style={{fontSize:32,marginBottom:10}}>📋</div>
-                  <div style={{fontSize:14}}>No prospects yet — tap 📂 to import a roster</div>
+      <div style={{maxWidth:1200,margin:'0 auto',padding:'14px 16px'}}>
+        {loading?<Spinner/>:(
+          <>
+            {tab==='prospects'&&(
+              <div>
+                <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search name, school, jersey #..."
+                  style={{width:'100%',background:C.navyL,border:`1px solid ${C.line}`,borderRadius:10,color:C.white,padding:'10px 14px',fontSize:14,marginBottom:10,boxSizing:'border-box'}}/>
+                <div style={{display:'flex',gap:6,marginBottom:10,overflowX:'auto',paddingBottom:2,flexWrap:'wrap'}}>
+                  {['All','Not Started','Draft','Submitted'].map(s=>(
+                    <button key={s} onClick={()=>setStatusFilter(s)} style={{background:statusFilter===s?C.red:C.navyL,border:`1px solid ${statusFilter===s?C.red:C.line}`,color:statusFilter===s?'#fff':C.silver,borderRadius:20,padding:'4px 12px',fontSize:11,fontWeight:600,cursor:'pointer',whiteSpace:'nowrap'}}>{s}</button>
+                  ))}
                 </div>
-              )}
-              {filtered.map(p=>(
-                <div key={p.id} onClick={()=>setSelectedProspect(p)} style={{background:C.navyL,border:`1px solid ${C.line}`,borderLeft:`3px solid ${gradeToColor(p.grade)}`,borderRadius:10,padding:'12px 14px',marginBottom:10,cursor:'pointer'}}>
-                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                    <div style={{display:'flex',alignItems:'center',gap:8}}>
-                      <ColorDot grade={p.grade} size={9}/>
-                      <div>
-                        <div style={{color:C.white,fontWeight:700,fontSize:15}}>{p.name}</div>
-                        <div style={{color:C.silver,fontSize:12}}>#{p.jersey} · {p.position} · {p.school}</div>
-                      </div>
-                    </div>
-                    <StatusPill status={p.status}/>
+                <div style={{display:'flex',gap:6,marginBottom:14,overflowX:'auto',paddingBottom:2}}>
+                  {POSITIONS.map(pos=>(
+                    <button key={pos} onClick={()=>setPosFilter(pos)} style={{background:posFilter===pos?C.blue:C.navyL,border:`1px solid ${posFilter===pos?C.blue:C.line}`,color:posFilter===pos?'#fff':C.silver,borderRadius:20,padding:'4px 10px',fontSize:11,fontWeight:600,cursor:'pointer',whiteSpace:'nowrap'}}>{pos}</button>
+                  ))}
+                </div>
+                <div style={{color:C.silver,fontSize:11,marginBottom:10,letterSpacing:'0.06em'}}>{filtered.length} PROSPECTS</div>
+                {filtered.length===0&&(
+                  <div style={{textAlign:'center',padding:'40px 20px',color:C.silver}}>
+                    <div style={{fontSize:32,marginBottom:10}}>📋</div>
+                    <div style={{fontSize:14}}>No prospects yet — tap 📂 to import a roster</div>
                   </div>
-                  <MeasurablesRow p={p}/>
-                </div>
-              ))}
-            </div>
-          )}
-          {tab==='schools'&&(
-            <div style={{padding:'14px 16px'}}>
-              <div style={{color:C.silver,fontSize:11,marginBottom:10,letterSpacing:'0.06em'}}>{schools.length} SCHOOLS</div>
-              {schools.length===0&&(
-                <div style={{textAlign:'center',padding:'40px 20px',color:C.silver}}>
-                  <div style={{fontSize:32,marginBottom:10}}>🏫</div>
-                  <div style={{fontSize:14}}>No schools yet — import a roster to get started</div>
-                </div>
-              )}
-              {schools.map(s=>{
-                const sp=prospects.filter(p=>p.school===s.name).sort((a,b)=>parseFloat(b.grade||0)-parseFloat(a.grade||0));
-                return(
-                  <div key={s.name} onClick={()=>setSelectedSchool(s)} style={{background:C.navyL,border:`1px solid ${C.line}`,borderRadius:12,padding:'14px 16px',marginBottom:10,cursor:'pointer'}}>
-                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>
-                      <div>
-                        <div style={{color:C.white,fontWeight:700,fontSize:16}}>🏫 {s.name}</div>
-                        <div style={{color:C.silver,fontSize:12,marginTop:2}}>{sp.length} prospect{sp.length!==1?'s':''}</div>
+                )}
+                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))',gap:10}}>
+                  {filtered.map(p=>(
+                    <div key={p.id} onClick={()=>setSelectedProspect(p)} style={{background:C.navyL,border:`1px solid ${C.line}`,borderLeft:`3px solid ${gradeToColor(p.grade)}`,borderRadius:10,padding:'12px 14px',cursor:'pointer'}}>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                        <div style={{display:'flex',alignItems:'center',gap:8}}>
+                          <ColorDot grade={p.grade} size={9}/>
+                          <div>
+                            <div style={{color:C.white,fontWeight:700,fontSize:15}}>{p.name}</div>
+                            <div style={{color:C.silver,fontSize:12}}>#{p.jersey} · {p.position} · {p.school}</div>
+                          </div>
+                        </div>
+                        <StatusPill status={p.status}/>
                       </div>
-                      <span style={{background:s.visit_type==='Return Visit'?'#001530':'#001a00',color:s.visit_type==='Return Visit'?C.blue:'#9ACD32',border:`1px solid ${s.visit_type==='Return Visit'?'#003060':'#1a4a00'}`,fontSize:10,fontWeight:700,padding:'3px 8px',borderRadius:20}}>{s.visit_type||'First Visit'}</span>
+                      <MeasurablesBar p={p}/>
                     </div>
-                    <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-                      {sp.map(p=>(<div key={p.id} style={{display:'flex',alignItems:'center',gap:4}}><ColorDot grade={p.grade} size={8}/><span style={{fontSize:10,color:C.silver}}>{p.position}</span></div>))}
-                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {tab==='schools'&&(
+              <div>
+                <div style={{color:C.silver,fontSize:11,marginBottom:10,letterSpacing:'0.06em'}}>{schools.length} SCHOOLS</div>
+                {schools.length===0&&(
+                  <div style={{textAlign:'center',padding:'40px 20px',color:C.silver}}>
+                    <div style={{fontSize:32,marginBottom:10}}>🏫</div>
+                    <div style={{fontSize:14}}>No schools yet — import a roster to get started</div>
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </>
-      )}
+                )}
+                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:10}}>
+                  {schools.map(s=>{
+                    const sp=prospects.filter(p=>p.school===s.name).sort((a,b)=>parseFloat(b.grade||0)-parseFloat(a.grade||0));
+                    return(
+                      <div key={s.name} onClick={()=>setSelectedSchool(s)} style={{background:C.navyL,border:`1px solid ${C.line}`,borderRadius:12,padding:'14px 16px',cursor:'pointer'}}>
+                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>
+                          <div>
+                            <div style={{color:C.white,fontWeight:700,fontSize:16}}>🏫 {s.name}</div>
+                            <div style={{color:C.silver,fontSize:12,marginTop:2}}>{sp.length} prospect{sp.length!==1?'s':''}</div>
+                          </div>
+                          <span style={{background:s.visit_type==='Return Visit'?'#001530':'#001a00',color:s.visit_type==='Return Visit'?C.blue:'#9ACD32',border:`1px solid ${s.visit_type==='Return Visit'?'#003060':'#1a4a00'}`,fontSize:10,fontWeight:700,padding:'3px 8px',borderRadius:20,whiteSpace:'nowrap'}}>{s.visit_type||'First Visit'}</span>
+                        </div>
+                        <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                          {sp.map(p=>(<div key={p.id} style={{display:'flex',alignItems:'center',gap:4}}><ColorDot grade={p.grade} size={8}/><span style={{fontSize:10,color:C.silver}}>{p.position}</span></div>))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
       {selectedProspect&&<ProspectModal prospect={selectedProspect} onClose={()=>setSelectedProspect(null)} onSave={updateProspect}/>}
       {selectedSchool&&<SchoolModal school={selectedSchool} allProspects={prospects} onClose={()=>setSelectedSchool(null)} onProspect={p=>setSelectedProspect(p)}/>}
       {showImport&&<ImportModal onClose={()=>setShowImport(false)} onImported={load}/>}
