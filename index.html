@@ -34,7 +34,30 @@ const { useState, useEffect, useRef } = React;
 const SUPA_URL = 'https://qvqfipckrxkbbhmkvfkf.supabase.co';
 const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2cWZpcGNrcnhrYmJobWt2ZmtmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMTE4NDgsImV4cCI6MjA5NTg4Nzg0OH0.FAsZtIoWABvcU0m6LdHQD5axUXSRnxOth8IXD1sCYMA';
 const sb = supabase.createClient(SUPA_URL, SUPA_KEY);
+const ANTH_KEY = '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';
 const PIN = '131121';
+
+
+async function callClaude(prompt, system=''){
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method:'POST',
+    headers:{
+      'Content-Type':'application/json',
+      'x-api-key': ANTH_KEY,
+      'anthropic-version':'2023-06-01',
+      'anthropic-dangerous-direct-browser-access':'true'
+    },
+    body: JSON.stringify({
+      model:'claude-sonnet-4-6',
+      max_tokens:1024,
+      system: system||'You are an NFL scout assistant. Be concise and factual.',
+      messages:[{role:'user',content:prompt}]
+    })
+  });
+  const data = await resp.json();
+  if(data.error) throw new Error(data.error.message);
+  return data.content[0].text;
+}
 
 const C = {
   navy:'#0C2340',navyL:'#122b4d',navyD:'#080f1a',
@@ -161,6 +184,94 @@ function PinScreen({onUnlock}){
   );
 }
 
+// ── Generate Report Component ────────────────────────────────────────────────
+function GenerateReport({prospect,onSave}){
+  const [status,setStatus]=useState('idle');
+  const [report,setReport]=useState(prospect.summer_report||'');
+  async function generate(){
+    if(!prospect.summer_eval||prospect.summer_eval.trim()===''){
+      alert('Add your summer eval notes first.');
+      return;
+    }
+    setStatus('loading');
+    try{
+      const prompt = `You are an NFL scout writing a professional scouting report. Clean up and format the following raw eval notes into a concise, polished paragraph report. Keep the grade if included (format like 6.5, 7.0 etc). Match the tone of a professional NFL scouting report — direct, factual, no fluff.
+
+Player: ${prospect.name}
+Position: ${prospect.position}
+School: ${prospect.school}
+
+Raw eval notes:
+${prospect.summer_eval}
+
+Output: One clean paragraph with the grade worked in naturally. Do not add information not in the notes.`;
+      const result = await callClaude(prompt);
+      setReport(result);
+      setStatus('done');
+      onSave({...prospect, summer_report:result});
+      await supabase.createClient('https://qvqfipckrxkbbhmkvfkf.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2cWZpcGNrcnhrYmJobWt2ZmtmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMTE4NDgsImV4cCI6MjA5NTg4Nzg0OH0.FAsZtIoWABvcU0m6LdHQD5axUXSRnxOth8IXD1sCYMA').from('prospects').update({summer_report:result}).eq('id',prospect.id);
+    } catch(e){
+      setReport('Error: '+e.message);
+      setStatus('done');
+    }
+  }
+  return(
+    <div style={{marginTop:10}}>
+      <button onClick={generate} disabled={status==='loading'} style={{width:'100%',background:status==='loading'?C.navyL:`linear-gradient(135deg,${C.red},#8B0000)`,color:'#fff',border:'none',borderRadius:10,padding:'12px 0',fontSize:14,fontWeight:700,cursor:status==='loading'?'default':'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+        {status==='loading'?'⏳ Enhancing…':'✨ Enhance'}
+      </button>
+      {report&&(
+        <div style={{marginTop:12,background:C.navyL,border:`1px solid ${C.line}`,borderRadius:12,padding:14}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+            <div style={{color:C.blue,fontSize:11,fontWeight:700,letterSpacing:'0.08em'}}>GENERATED REPORT</div>
+            <button onClick={()=>navigator.clipboard.writeText(report)} style={{background:'none',border:`1px solid ${C.line}`,color:C.silverL,borderRadius:6,padding:'3px 10px',fontSize:11,cursor:'pointer'}}>Copy</button>
+          </div>
+          <div style={{color:C.white,fontSize:13,lineHeight:1.8}}>{report}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Summer Intel Component ───────────────────────────────────────────────────
+function SummerIntel({prospect}){
+  const [status,setStatus]=useState('idle');
+  const [intel,setIntel]=useState('');
+  async function pullIntel(){
+    setStatus('loading');
+    setIntel('');
+    try{
+      const prompt = `You are an NFL scout. Pull the following for ${prospect.name} (${prospect.position}, ${prospect.school}):
+
+1. 2025 SEASON STATS - key position-relevant stats (passing yards/TD/INT for QB, receiving stats for WR/TE, rushing for RB, tackles/sacks/TFL for defenders, etc)
+2. MOCK DRAFT BUZZ - any mentions in credible mock drafts or scouting reports from The Athletic, ESPN, CBS Sports, SI, NFL.com, PFF, or NFL Draft Scout. Include the source and round projection if available.
+3. ANY OTHER RELEVANT INTEL - injuries, awards, notable performances, combine invites
+
+Be concise. Use short labeled sections. If no mock draft buzz exists yet, say so briefly.`;
+      const result = await callClaude(prompt);
+      setIntel(result);
+      setStatus('done');
+    } catch(e){
+      setIntel('Error pulling intel: '+e.message);
+      setStatus('done');
+    }
+  }
+  return(
+    <div style={{marginBottom:16}}>
+      <button onClick={pullIntel} disabled={status==='loading'} style={{width:'100%',marginBottom:12,background:status==='loading'?C.navyL:`linear-gradient(135deg,${C.navy},${C.navyL})`,border:`1px solid ${C.blue}`,color:status==='loading'?C.silver:C.blue,borderRadius:12,padding:'14px 0',fontSize:14,fontWeight:700,cursor:status==='loading'?'default':'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+        {status==='loading'?'⏳ Pulling Intel…':'🔍 Pull 2025 Stats + Intel'}
+      </button>
+      {(status==='loading'||status==='done')&&(
+        <div style={{background:C.navyL,border:`1px solid ${C.line}`,borderRadius:12,padding:14}}>
+          <div style={{color:C.blue,fontSize:11,fontWeight:700,letterSpacing:'0.08em',marginBottom:8}}>2025 INTEL</div>
+          {status==='loading'&&<div style={{color:C.silver,fontSize:13}}>Searching for stats and mock draft mentions…</div>}
+          {status==='done'&&<div style={{color:C.silverL,fontSize:13,lineHeight:1.7,whiteSpace:'pre-wrap'}}>{intel}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Full screen prospect modal ────────────────────────────────────────────────
 function ProspectModal({prospect:init,onClose,onSave}){
   const [p,setP]=useState({...init});
@@ -258,19 +369,11 @@ function ProspectModal({prospect:init,onClose,onSave}){
         {tab===4&&<LockedTab label="Eval Report Generator"/>}
         {tab===5&&(
           <div>
-            <button style={{width:'100%',marginBottom:16,background:`linear-gradient(135deg,${C.navy},${C.navyL})`,border:`1px solid ${C.blue}`,color:C.blue,borderRadius:12,padding:'14px 0',fontSize:14,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
-              🔍 Pull 2025 Stats + Intel
-            </button>
-            <div style={{background:C.navyL,border:`1px solid ${C.line}`,borderRadius:12,padding:14,marginBottom:16}}>
-              <div style={{color:C.blue,fontSize:11,fontWeight:700,letterSpacing:'0.08em',marginBottom:6}}>2025 INTEL</div>
-              <div style={{color:C.silver,fontSize:13,lineHeight:1.6}}>Tap button above to pull stats and intel from The Athletic, ESPN, CBS, SI, NFL.com & PFF.</div>
-            </div>
+            <SummerIntel prospect={p}/>
             <div style={{color:C.silverL,fontSize:11,fontWeight:700,letterSpacing:'0.08em',marginBottom:6}}>SUMMER EVAL</div>
             <NoteArea value={p.summer_eval} onChange={v=>autoSave({...p,summer_eval:v})} placeholder={"Write your eval — include grade (e.g. 6.5) and raw thoughts..."} minHeight={180}/>
             <VoiceBtn/>
-            <button style={{marginTop:10,width:'100%',background:`linear-gradient(135deg,${C.red},#8B0000)`,color:'#fff',border:'none',borderRadius:10,padding:'12px 0',fontSize:14,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
-              ✨ Clean Up + Generate Report
-            </button>
+            <GenerateReport prospect={p} onSave={autoSave}/>
           </div>
         )}
       </div>
@@ -368,17 +471,34 @@ function ImportModal({onClose,onImported}){
 
 // ── School Briefing Component ────────────────────────────────────────────────
 function SchoolBriefing({school}){
-  const [status,setStatus]=useState('idle'); // idle | loading | done
+  const [status,setStatus]=useState('idle');
   const [briefing,setBriefing]=useState('');
+  async function pullBriefing(){
+    setStatus('loading');
+    try{
+      const prompt = `You are an NFL scout preparing to visit ${school.name}. Generate a concise pre-visit briefing covering:
+1. TEAM OVERVIEW - current record if available, offensive/defensive system, coaching staff notes
+2. KEY PROSPECTS - brief bullets on the top prospects to watch
+3. VISIT AGENDA - suggested focus areas based on the team's style of play
+Keep it tight — this is a reference doc for a scout heading out the door.`;
+      const result = await callClaude(prompt);
+      setBriefing(result);
+      setStatus('done');
+    } catch(e){
+      setBriefing('Error: '+e.message);
+      setStatus('done');
+    }
+  }
   return(
     <div style={{background:C.navyL,border:`1px solid ${C.line}`,borderRadius:12,padding:14,marginBottom:20}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
         <div style={{color:C.blue,fontSize:11,fontWeight:700,letterSpacing:'0.08em'}}>🔍 AI BRIEFING</div>
-        {status==='idle'&&<button onClick={()=>setStatus('loading')} style={{background:C.blue,color:'#fff',border:'none',borderRadius:8,padding:'4px 12px',fontSize:11,fontWeight:600,cursor:'pointer'}}>Pull Briefing</button>}
-        {status==='loading'&&<span style={{fontSize:11,color:C.silver}}>Loading…</span>}
+        {status==='idle'&&<button onClick={pullBriefing} style={{background:C.blue,color:'#fff',border:'none',borderRadius:8,padding:'4px 12px',fontSize:11,fontWeight:600,cursor:'pointer'}}>Pull Briefing</button>}
+        {status==='loading'&&<span style={{fontSize:11,color:C.silver}}>Pulling…</span>}
+        {status==='done'&&<button onClick={pullBriefing} style={{background:'none',border:`1px solid ${C.line}`,color:C.silverL,borderRadius:8,padding:'4px 10px',fontSize:11,cursor:'pointer'}}>Refresh</button>}
       </div>
-      {status==='idle'&&<div style={{color:C.silver,fontSize:13,lineHeight:1.6}}>Tap Pull Briefing to generate — requires API key.</div>}
-      {status==='loading'&&<div style={{color:C.silver,fontSize:13,lineHeight:1.6}}>Pulling team record, injuries, prospect intel…</div>}
+      {status==='idle'&&<div style={{color:C.silver,fontSize:13,lineHeight:1.6}}>Tap Pull Briefing to generate.</div>}
+      {status==='loading'&&<div style={{color:C.silver,fontSize:13,lineHeight:1.6}}>Generating briefing…</div>}
       {status==='done'&&<div style={{color:C.silverL,fontSize:13,lineHeight:1.7,whiteSpace:'pre-wrap'}}>{briefing}</div>}
     </div>
   );
