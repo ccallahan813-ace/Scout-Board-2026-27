@@ -295,7 +295,9 @@ function ImportModal({onClose,onImported}){
           const last=r.LAST||r.last||r.Last||'';
           const first=r.FIRST||r.first||r.First||'';
           const name=r.name||r.Name||r.NAME||(last&&first?`${first} ${last}`:last||first)||'';
-          const pos=r.POS||r.pos||r.position||r.Position||r.FOOTBALL||'';
+          const POS_MAP={'DC':'CB','FS':'S','SS':'S','IB':'ILB','OC':'C','OG':'G','OH':'RB','OT':'T','PK':'K','PT':'P','WO':'WR'};
+          const rawPos=(r.POS||r.pos||r.position||r.Position||r.FOOTBALL||'').trim().toUpperCase();
+          const pos=POS_MAP[rawPos]||rawPos;
           const jersey=r.JSY||r.jsy||r.jersey||r.Jersey||r['#']||'';
           const ht=r.HT||'';const wt=r.WT||'';const spd=r.SPD||'';
           const arm=r.ARM||'';const hand=r.HAND||'';const wing=r.WING||'';
@@ -364,6 +366,24 @@ function ImportModal({onClose,onImported}){
   );
 }
 
+// ── School Briefing Component ────────────────────────────────────────────────
+function SchoolBriefing({school}){
+  const [status,setStatus]=useState('idle'); // idle | loading | done
+  const [briefing,setBriefing]=useState('');
+  return(
+    <div style={{background:C.navyL,border:`1px solid ${C.line}`,borderRadius:12,padding:14,marginBottom:20}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+        <div style={{color:C.blue,fontSize:11,fontWeight:700,letterSpacing:'0.08em'}}>🔍 AI BRIEFING</div>
+        {status==='idle'&&<button onClick={()=>setStatus('loading')} style={{background:C.blue,color:'#fff',border:'none',borderRadius:8,padding:'4px 12px',fontSize:11,fontWeight:600,cursor:'pointer'}}>Pull Briefing</button>}
+        {status==='loading'&&<span style={{fontSize:11,color:C.silver}}>Loading…</span>}
+      </div>
+      {status==='idle'&&<div style={{color:C.silver,fontSize:13,lineHeight:1.6}}>Tap Pull Briefing to generate — requires API key.</div>}
+      {status==='loading'&&<div style={{color:C.silver,fontSize:13,lineHeight:1.6}}>Pulling team record, injuries, prospect intel…</div>}
+      {status==='done'&&<div style={{color:C.silverL,fontSize:13,lineHeight:1.7,whiteSpace:'pre-wrap'}}>{briefing}</div>}
+    </div>
+  );
+}
+
 // ── School Modal ──────────────────────────────────────────────────────────────
 function SchoolModal({school,allProspects,onClose,onProspect}){
   const prospects=allProspects.filter(p=>p.school===school.name).sort((a,b)=>parseFloat(b.grade||0)-parseFloat(a.grade||0));
@@ -379,10 +399,7 @@ function SchoolModal({school,allProspects,onClose,onProspect}){
         </div>
       </div>
       <div style={{flex:1,overflowY:'auto',padding:20,maxWidth:800,width:'100%',margin:'0 auto',boxSizing:'border-box'}}>
-        <div style={{background:C.navyL,border:`1px solid ${C.line}`,borderRadius:12,padding:14,marginBottom:20}}>
-          <div style={{color:C.blue,fontSize:11,fontWeight:700,letterSpacing:'0.08em',marginBottom:6}}>🔍 AI BRIEFING</div>
-          <div style={{color:C.silver,fontSize:13,lineHeight:1.6}}>Auto-generated briefing unlocks with API key.</div>
-        </div>
+        <SchoolBriefing school={school}/>
         <div style={{color:C.silverL,fontSize:11,fontWeight:700,letterSpacing:'0.08em',marginBottom:10}}>PROSPECTS · {prospects.length}</div>
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:10}}>
           {prospects.map(p=>(
@@ -438,7 +455,7 @@ function App(){
     const schoolNames=[...new Set((ps||[]).map(p=>p.school).filter(Boolean))];
     const schoolMap={};
     (sc||[]).forEach(s=>{schoolMap[s.name]=s;});
-    setSchools(schoolNames.map(name=>schoolMap[name]||{name,visit_type:'First Visit'}));
+    setSchools(schoolNames.sort((a,b)=>a.localeCompare(b)).map(name=>schoolMap[name]||{name,visit_type:'First Visit'}));
     setLoading(false);
   }
 
